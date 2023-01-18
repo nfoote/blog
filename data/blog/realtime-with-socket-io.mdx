@@ -1,0 +1,59 @@
+---
+title: Realtime with Socket-IO
+date: '2022-12-28'
+tags: ['WebSocket', 'Socket-IO', 'React', 'Project']
+draft: false
+summary:
+images: []
+---
+
+## Description
+
+My motivation for this project was to expand on my understanding of WebSockets and the
+Socket-IO API. I've been using [Miro](https://miro.com/) alot at work lately, and wanted to get a sense of how they
+implemented cursor tracking for multiple users so smoothly in the browser.
+
+[GitHub Link](https://github.com/nfoote/miro-clone)
+
+## How to navigate this project
+
+The front-end has been created with `create-react-app`. The backend is a simple Node.js `Express` server.
+
+The `App.js` file only contains one extra component `Canvas` which is wrapped in a context provider `SocketProvider`.
+The intention here is to share the Socket.IO context in a way that ensures:
+
+- Only one Socket.IO connection is made per client.
+- Re-renders on the canvas component don't cause excessive connections and duplicate clients.
+- The front-end can easily emit to the node server and handle events in central place.
+
+```jsx
+import React from "react";
+import Canvas from "./components/canvas";
+
+function App() {
+  return (
+    <>
+      <SocketProvider>
+        <Canvas />
+      </SocketProvider>
+    </>
+  );
+}
+export default App;
+```
+
+## Challenges I encountered
+
+- I faced issues such as excessive socket connections. I solved this by moving socket events and updates to be managed through the React context API and
+propagated through to the canvas component.
+- Understanding the Socket-IO paradigm around broadcasting to `rooms`(and which clients should receive these updates) was something that I didn't
+grasp initially. 
+- There is alot of freedom with how you can manage your socket connections with the Socket-IO API.
+Adding any sort of stateful updates on the back-end can quickly become difficult to replicate to all clients on the front-end.
+
+## What else would I do
+
+- Refactor the context approach with a state management middleware such as `redux` to handle updating results from the
+socket events. I ended up passing more data on each move of the cursor (clients cursor colour) than I would of liked.  
+- Add the ability to create sticky notes and other elements on the canvas, similar to miro.
+- Add a persistance layer to the back-end to save the elements created by users.
