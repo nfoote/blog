@@ -1,5 +1,5 @@
-import siteMetadata from "@/data/siteMetadata"
-import Icon from "@/components/social-icons"
+import siteMetadata from '@/data/siteMetadata'
+import Icon from '@/components/social-icons'
 import Image from "next/image"
 
 export default function Welcome() {
