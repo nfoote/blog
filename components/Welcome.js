@@ -1,5 +1,4 @@
 import siteMetadata from '@/data/siteMetadata'
-import Icon from '@/components/social-icons'
 import Image from "next/image"
 
 export default function Welcome() {
@@ -11,7 +10,6 @@ export default function Welcome() {
           alt="heroImage"
           height={350}
           width={350}
-          className=""
         />
       </div>
       <div className="prose dark:prose-dark pt-8 pb-8 xl:col-span-1">
