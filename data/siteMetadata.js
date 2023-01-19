@@ -5,10 +5,10 @@ const siteMetadata = {
   description: '',
   hero: '/static/images/diagram.svg',
   language: 'en-us',
-  theme: 'system', // system, dark or light
+  theme: 'dark', // system, dark or light
   siteUrl: 'https://nickfoote.net',
-  siteRepo: 'https://github.com/nfoote/blog', //todo
-  siteLogo: '/static/images/logo.png', // todo
+  siteRepo: 'https://github.com/nfoote/blog',
+  siteLogo: '/static/images/logo.png',
   image: '/static/images/avatar.png',
   socialBanner: '/static/images/twitter-card.png',
   email: 'n.foote09@gmail.com',
