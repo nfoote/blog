@@ -13,8 +13,8 @@ const projectsData = [
     I decided to stop procrastinating and finally
     build the floating timber desk that I've always wanted. Read through the highs and lows
     of how I set this up in my home study.`,
-    imgSrc: '/static/images/deskProject/IMG_4713.jpg',
-    href: '/blog/',
+    imgSrc: '/static/images/desk-project/sanding.jpg',
+    href: '/blog/desk-project',
   },
 ]
 
