@@ -1,17 +1,17 @@
 ---
 name: Nick Foote
 avatar: /static/images/avatar.png
-occupation: Software Developer
-company: Timelio
+occupation: Software Engineer
+company: Earlypay
 email: n.foote09@gmail.com
 linkedin: https://www.linkedin.com/in/nick-foote-17008288/
 github: https://github.com/nfoote
 ---
 
-Hi, I'm Nick.
+I'm a Software Engineer based in Australia, with experience delivering software across manufacturing, healthcare, and finance. I love working on complex systems and bringing ideas to life - whether that's crafting a clean UI, building integrations, or architecting backend services.
 
-I work as a software developer and am based in Australia. I have built applications for manufacturing, health and now work in finance. 
+These days I work full stack, blending modern JavaScript frameworks with .NET on the backend. I have a real passion for creating intuitive user experiences, especially on platforms that handle data-rich workflows, financial systems, or API integrations. Beyond my day job, I've built AI-powered trading tools, experimented with procedural generation in Unreal Engine, and dived deep into system design and architecture.
 
-One of my main interests is building user interfaces, and it is something I have always had a passion for. I currently work full stack and love working with JavaScript on the front-end and .NET for back-end development.
+When I'm not coding or tinkering with side projects, I’m spending time with my family and mates - including my loyal sidekick, Buddy the golden retriever. I'm a keen gamer, always chasing that next "just one more run" feeling, and love unwinding by making pizza from scratch on my Ooni or experimenting with smoking meats on my Weber kettle.
 
-When I am not at work or playing with tech I like to hang out with my dog Buddy.
+![Nick](/static/images/nick_and_bud.jpg)

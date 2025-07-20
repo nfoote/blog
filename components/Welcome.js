@@ -15,10 +15,18 @@ export default function Welcome() {
       <div className="prose dark:prose-dark pt-8 pb-8 xl:col-span-1">
         <h2>Hey, I'm Nick</h2>
         <p>
-          I am a Software Developer based in Australia. I like to dabble with different tools and languages in my spare time and am always keen to learn something new.
-          Here, I'll be sharing my thoughts and experiences on the latest tech that I've had the opportunity to use.  
-          Occasionally, I also write about cooking, DIY and other random things. Thanks for stopping by!
+          I’m a <strong>Software Engineer based in Australia</strong> 🇦🇺 with a passion for <strong>building great software</strong>: crafting intuitive UIs, designing clean backend services, working on distributed systems, and experimenting with new tools and tech.
         </p>
+        <p>
+          I enjoy sharing insights from projects I’ve worked on, lessons learned along the way, and the occasional deep dive into topics like <strong>game development</strong>, <strong>trading bots</strong>, or <strong>dev workflows</strong>.
+        </p>
+        <p>
+          Outside of coding, you’ll probably find me chasing a new recipe, firing up the pizza oven, or getting stuck into a DIY project.
+          <br />
+          <strong>Thanks for stopping by — feel free to check out my latest projects or drop me a line!</strong>
+        </p>
+
+
       </div>
     </div>
   )
