@@ -2,6 +2,14 @@ const defaultTheme = require('tailwindcss/defaultTheme')
 const colors = require('tailwindcss/colors')
 
 module.exports = {
+  safelist: [
+    {
+      pattern: /token/,
+    },
+    {
+      pattern: /language-/,
+    },
+  ],
   experimental: {
     optimizeUniversalDefaults: true,
   },
@@ -11,6 +19,7 @@ module.exports = {
     './layouts/**/*.js',
     './lib/**/*.js',
     './data/**/*.mdx',
+    './css/**/*.css',
   ],
   darkMode: 'class',
   theme: {

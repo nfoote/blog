@@ -7,6 +7,20 @@ import TOCInline from './TOCInline'
 import Pre from './Pre'
 import { BlogNewsletterForm } from './NewsletterForm'
 
+// Statically import known layouts
+import PostLayout from '../layouts/PostLayout'
+import PostSimple from '../layouts/PostSimple'
+import AuthorLayout from '../layouts/AuthorLayout'
+import ListLayout from '../layouts/ListLayout'
+
+// Map layout names to components
+const LayoutMap = {
+  PostLayout,
+  PostSimple,
+  AuthorLayout,
+  ListLayout,
+}
+
 export const MDXComponents = {
   Image,
   TOCInline,
@@ -14,7 +28,7 @@ export const MDXComponents = {
   pre: Pre,
   BlogNewsletterForm: BlogNewsletterForm,
   wrapper: ({ components, layout, ...rest }) => {
-    const Layout = require(`../layouts/${layout}`).default
+    const Layout = LayoutMap[layout] || ((props) => <div {...props} />)
     return <Layout {...rest} />
   },
 }
@@ -22,5 +36,5 @@ export const MDXComponents = {
 export const MDXLayoutRenderer = ({ layout, mdxSource, ...rest }) => {
   const MDXLayout = useMemo(() => getMDXComponent(mdxSource), [mdxSource])
 
-  return <MDXLayout layout={layout} components={MDXComponents} {...rest} />
+  return <MDXLayout components={MDXComponents} layout={layout} {...rest} />
 }

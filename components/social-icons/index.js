@@ -10,7 +10,7 @@ import Twitter from './twitter.svg'
 const components = {
   mail: Mail,
   github: Github,
-  linkedin: Linkedin
+  linkedin: Linkedin,
 }
 
 const SocialIcon = ({ kind, href, size = 8 }) => {
