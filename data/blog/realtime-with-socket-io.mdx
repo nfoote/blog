@@ -28,8 +28,8 @@ The intention here is to share the Socket.IO context in a way that ensures:
 - The front-end can easily emit to the node server and handle events in central place.
 
 ```jsx
-import React from "react";
-import Canvas from "./components/canvas";
+import React from 'react'
+import Canvas from './components/canvas'
 
 function App() {
   return (
@@ -38,23 +38,23 @@ function App() {
         <Canvas />
       </SocketProvider>
     </>
-  );
+  )
 }
-export default App;
+export default App
 ```
 
 ## Challenges I encountered
 
 - I faced issues such as excessive socket connections. I solved this by moving socket events and updates to be managed through the React context API and
-propagated through to the canvas component.
+  propagated through to the canvas component.
 - Understanding the Socket-IO paradigm around broadcasting to `rooms`(and which clients should receive these updates) was something that I didn't
-grasp initially.
+  grasp initially.
 - There is alot of freedom with how you can manage your socket connections with the Socket-IO API.
-Adding any sort of stateful updates on the back-end can quickly become difficult to replicate to all clients on the front-end.
+  Adding any sort of stateful updates on the back-end can quickly become difficult to replicate to all clients on the front-end.
 
 ## What else would I do
 
 - Refactor the context approach with a state management middleware such as `redux` to handle updating results from the
-socket events. I ended up passing more data on each move of the cursor (clients cursor colour) than I would of liked.
+  socket events. I ended up passing more data on each move of the cursor (clients cursor colour) than I would of liked.
 - Add the ability to create sticky notes and other elements on the canvas, similar to miro.
 - Add a persistance layer to the back-end to save the elements created by users.
