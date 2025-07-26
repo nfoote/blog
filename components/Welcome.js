@@ -10,7 +10,7 @@ export default function Welcome() {
       <div className="prose dark:prose-dark pt-8 pb-8 xl:col-span-1">
         <h2>Hey, I'm Nick</h2>
         <p>
-          I’m a <strong>Software Engineer based in Australia</strong> 🇦🇺 with a passion for{' '}
+          I’m a <strong>Software Engineer based in Australia</strong> 🦘with a passion for{' '}
           <strong>building great software</strong>: crafting intuitive UIs, designing clean backend
           services, working on distributed systems, and experimenting with new tools and tech.
         </p>

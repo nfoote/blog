@@ -1,0 +1,138 @@
+---
+title: What I Learned in My First Year with Unreal and GAS
+date: '2025-07-22'
+tags: ['Unreal Engine', 'GAS']
+draft: false
+summary:
+layout: PostLayout
+images: []
+---
+
+## Intro
+
+It’s been a while since I updated this blog (literally years!), but I figured it’s about time I post something — for a couple of reasons.
+Firstly, I want to use this space to keep the momentum going with my game project, _Forge_.
+Secondly, I’d like to turn this into a devlog of sorts — a way to solidify what I’ve been learning and reflect on what I plan to build next.
+
+## What is Forge?
+
+<video
+  src="/static/images/devlog/wendigo-2.mp4"
+  autoPlay
+  loop
+  muted
+  playsInline
+  style={{ maxWidth: '100%' }}
+></video>
+
+_Forge_ is an RPG I’ve been slowly building in Unreal Engine 5 — a passion project inspired by classics like _Diablo II_ and _Path of Exile_,
+with a mix of modern survival elements from games like _Valheim_ and _Rust_.
+My goal is to blend loot-driven progression with fast-paced combat in an online multiplayer world.
+
+I’ve tried (and failed) at hobby game projects before — in fact, game dev is what got me started as a developer years ago —
+but this time has been different.
+
+In the past, I’d usually abandon projects before they got off the ground.
+Sometimes I’d get distracted; other times I’d chase the next shiny idea.
+But with _Forge_, I’ve stuck with it for nearly a year now — slowly chipping away at it.
+A big part of that is thanks to the amazing Unreal Engine 5 course by Stephen Ulibarri:
+[Unreal Engine 5 — Gameplay Ability System — Top Down RPG](https://www.udemy.com/course/unreal-engine-5-gas-top-down-rpg)
+
+Stephen’s course is hands-down the best resource I’ve found for understanding the Gameplay Ability System (GAS).
+It’s not just about following along and building features — it dives deep into how GAS works under the hood:
+replication, prediction, effect specs, ability activation, and more.
+If you’re serious about learning Unreal’s systems in a real project context, I highly recommend it.
+
+## Why Unreal? Why GAS?
+
+Before this, I’d tinkered with Unity for a few years.
+I always shied away from Unreal — mostly because of the learning curve with Blueprints,
+and my comfort zone being in C# rather than C++.
+
+And yeah… the learning curve is real.
+But when Unreal clicks, it _really_ clicks.
+The workflow of building C++ base classes and extending them in Blueprints gave me a better understanding of how
+game logic and gameplay systems mesh together. It’s more structured, and I’ve come to appreciate that.
+
+What really drew me in, though, is Unreal’s out-of-the-box support for networking and multiplayer.
+Back when I was using Unity (5+ years ago), networking felt like a bolt-on — relying on third-party tools.
+In contrast, Unreal’s client/server architecture and built-in replication give you multiplayer support from the start,
+with tools for simulating clients, running dedicated servers, and debugging replication flow.
+It felt like the right engine for what I want _Forge_ to become.
+
+## Things I Love About Unreal (So Far)
+
+### Metahuman
+
+<video
+  src="/static/images/devlog/meta-human-2.mp4"
+  autoPlay
+  loop
+  muted
+  playsInline
+  style={{ maxWidth: '100%' }}
+></video>
+
+Building characters for _Forge_ was one of the first big decisions I had to make.
+I’m not a 3D modeler by any stretch — my strengths lie in designing systems and UI, like I do in my day job.
+When I started this project a year ago, Metahuman was already on my radar,
+but most people online warned that it wasn’t “game-ready” — too high-poly, better suited for cinematics or cutscenes.
+
+Fast forward to 2025, and Unreal Engine 5.6 introduced **low-poly game-ready Metahumans**.
+That changed everything.
+Now I can use these incredible character tools to create dynamic, realistic NPCs and players — without needing an art pipeline.
+
+### Animation Retargeting
+
+<video
+  src="/static/images/devlog/lols.mp4"
+  autoPlay
+  loop
+  muted
+  playsInline
+  style={{ maxWidth: '100%' }}
+></video>
+
+Like modeling, animation isn’t one of my strong suits either.
+But Unreal’s animation retargeting tools made it surprisingly approachable.
+After a few (hilarious) failed attempts, I figured out how to match bone chains and skeletons
+to reuse animations from one character on another.
+It opened up a ton of possibilities — now I can bring in third-party animation packs and reuse them across all my characters.
+
+<video
+  src="/static/images/devlog/retarget.mp4"
+  autoPlay
+  loop
+  muted
+  playsInline
+  style={{ maxWidth: '100%' }}
+></video>
+
+### User Interface Development
+
+The GAS course also covers a robust UI system that ties directly into your character’s abilities and attributes.
+It introduces a pattern called the **Widget Controller**, which acts as the glue between your gameplay systems and the front-end interface.
+As someone with a React/TypeScript background, it reminded me a lot of higher-order components or prop injection —
+you define what data the widget needs, and the controller handles how to pass it in.
+
+It has been incredibly satisfying to build things like health bars, ability icons, and stat panels that respond to gameplay state in real-time.
+
+<video
+  src="/static/images/devlog/level_up.mp4"
+  autoPlay
+  loop
+  muted
+  playsInline
+  style={{ maxWidth: '100%' }}
+></video>
+
+## What I'm Working on Next
+
+I feel like I’m only just scratching the surface of what’s possible with Unreal and the Gameplay Ability System.
+There’s still so much to explore — from advanced abilities to AI behaviors, networking, and world-building.
+
+Next up, I’ll be diving into melee combat and adding more abilities to the player.
+I’m aiming to prototype a full action loop — something that feels fast, responsive, and layered with depth.
+
+My next devlog will likely focus on that process: implementing melee attacks, animation syncing, and how I’m expanding the ability system to support it.
+Until then, thanks for reading — and if you're building something similar (or just curious about GAS), feel free to reach out!
