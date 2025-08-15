@@ -1,0 +1,582 @@
+---
+title: Up close with Melee attacks
+date: '2025-08-15'
+tags: ['Unreal Engine', 'GAS', Forge, 'C++']
+draft: false
+summary:
+layout: PostLayout
+images: []
+---
+
+# Adding Melee to Forge
+
+In the course I followed, melee combat was only covered for enemies and implemented entirely in
+Blueprints using a sphere overlap. That approach works well for AoE (Area of Effect) attacks and games that don’t require pinpoint precision - perfect for shambling zombies where a bit of imprecision suits their style.
+
+For the player, though, I wanted hit detection that matches the sword’s visible swing. This meant moving to a trace-based solution that delivers a more accurate hitbox for third-person melee.
+
+This system is fully replicated through GAS, so every swing is consistent and authoritative in multiplayer.
+
+<video
+  src="/static/images/devlog/overlap-melee.mp4"
+  autoPlay
+  loop
+  muted
+  playsInline
+  style={{ maxWidth: '100%' }}
+></video>
+
+---
+
+## Why traces instead of a simple overlap
+
+A single sphere or capsule can miss fast swings or register hits when the player's weapon doesn’t visually connect. While this imprecision feels fine in some situations, players expect more accuracy.
+
+A trace ribbon follows the weapon from frame to frame, so the hitbox matches what you see on screen.
+
+---
+
+## What’s a trace ribbon
+
+Each tick during an attack window, I read two sockets on the weapon mesh (base and tip) and sweep along the path the sockets traveled since the previous frame. This produces one or more narrow sweeps that approximate the blade volume throughout the swing.
+
+![Sword](/static/images/devlog/trace-ribbon.png)
+
+---
+
+## First step - Weapon sockets
+
+![Sword](/static/images/devlog/weapon-sockets.png)
+
+I added two sockets to my weapon skeletal mesh:
+
+- `Blade_base` near the hilt or hand-guard
+- `Blade_tip` at the very tip
+
+These are the anchors for the ribbon.
+
+---
+
+## Animation montage
+
+<video
+  src="/static/images/devlog/melee-montage.mp4"
+  autoPlay
+  loop
+  muted
+  playsInline
+  style={{ maxWidth: '100%' }}
+></video>
+
+My montage triggers the attack window using gameplay events:
+
+- `Event.Melee.Window.Begin` to start tracing
+- `Event.Melee.Window.End` to stop
+
+This keeps timing perfectly in sync with the animation.
+I’m using motion warping at this stage, though I may adjust as my melee system evolves.
+
+---
+
+## Mostly C++ driven
+
+Blueprints just play the montage. Hit logic, traces, and damage are in C++.
+
+![Sword](/static/images/devlog/melee-bp.png)
+
+---
+
+## How it works (quick walkthrough)
+
+#### AForgeMelee – the reusable “Melee engine”
+
+**`ResolveWeaponComp()`**
+
+- Gets the weapon skeletal mesh from `ForgeCharacterBase::GetWeaponMesh()`.
+- Falls back to the character’s main mesh if no weapon mesh is set.
+
+**`BeginWindow()` / `EndWindow()`**
+
+- Start and stop tracing during the swing window.
+- Cache initial socket positions to measure blade movement between ticks.
+
+**`Tick()`**
+
+- Sweep base, tip, and optional mid-chord.
+- Update previous positions.
+- Optionally draw a debug trail of the blade’s path.
+
+**`TraceRibbon(A, B)`**
+
+- Sphere-sweep between last and current socket positions.
+- Ignores self and deduplicates hits.
+
+**`SendHit()`**
+
+- Uses `ApplyDamageEffect` through the Ability System.
+- Applies knockback and other custom properties through a custom `EffectContext` using the blade’s direction.
+
+## `AForgeMelee.h`
+
+```cpp
+#pragma once
+
+#include "CoreMinimal.h"
+#include "GameFramework/Actor.h"
+#include "ForgeAbilityTypes.h"
+#include "ForgeMelee.generated.h"
+
+UCLASS()
+class FORGE_API AForgeMelee : public AActor
+{
+	GENERATED_BODY()
+public:
+	AForgeMelee();
+
+	UPROPERTY(BlueprintReadWrite, meta=(ExposeOnSpawn=true))
+	FDamageEffectParams DamageEffectParams;
+
+	UPROPERTY(BlueprintReadWrite, meta=(ExposeOnSpawn=true))
+	TWeakObjectPtr<AActor> SourceActor;
+
+	UPROPERTY(BlueprintReadWrite, meta=(ExposeOnSpawn=true))
+	FName BaseSocketName = NAME_None;
+
+	UPROPERTY(BlueprintReadWrite, meta=(ExposeOnSpawn=true))
+	FName TipSocketName  = NAME_None;
+
+	UPROPERTY(EditAnywhere)
+	TEnumAsByte<ECollisionChannel> TraceChannel = ECC_GameTraceChannel1;
+
+	UPROPERTY(EditAnywhere)
+	bool bUseMidRibbon = true;
+
+	UPROPERTY(EditAnywhere)
+	bool bDrawTrail = true;
+
+	UPROPERTY(EditAnywhere)
+	float TrailLifetime = 0.35f;
+
+	UPROPERTY(EditAnywhere)
+	int32 MaxTrailSamples = 64;
+
+	UPROPERTY(EditAnywhere)
+	float AutoDestroyTime = 1.0f;
+
+	UFUNCTION(BlueprintCallable)
+	void BeginWindow();
+
+	UFUNCTION(BlueprintCallable)
+	void EndWindow();
+
+protected:
+	virtual void BeginPlay() override;
+	virtual void Tick(float DeltaSeconds) override;
+
+private:
+	bool bWindowActive = false;
+	FVector PrevBase, PrevTip, PrevMid;
+	TSet<TWeakObjectPtr<AActor>> HitThisWindow;
+
+	USceneComponent* ResolveWeaponComp() const;
+	void TraceRibbon(const FVector& A, const FVector& B);
+	void SendHit(const FHitResult& Hit);
+
+	void DrawTrail();
+};
+```
+
+## `AForgeMelee.cpp`
+
+```cpp
+#include "Actor/ForgeMelee.h"
+#include "AbilitySystem/ForgeAbilitySystemLibrary.h"
+#include "AbilitySystemBlueprintLibrary.h"
+#include "AbilitySystemComponent.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "DrawDebugHelpers.h"
+#include "Character/ForgeCharacterBase.h"
+
+AForgeMelee::AForgeMelee()
+{
+    // Tracing happens per-frame only during active windows
+    PrimaryActorTick.bCanEverTick = true;
+    bReplicates = true;
+}
+
+void AForgeMelee::BeginPlay()
+{
+    Super::BeginPlay();
+    // Safety: auto-cleanup if EndWindow never arrives
+    SetLifeSpan(AutoDestroyTime);
+}
+
+USceneComponent* AForgeMelee::ResolveWeaponComp() const
+{
+    if (!SourceActor.IsValid()) return nullptr;
+
+    // Prefer the explicit weapon mesh stored on the character; fall back to the main mesh
+    if (const AForgeCharacterBase* C = Cast<AForgeCharacterBase>(SourceActor.Get()))
+    {
+        if (USkeletalMeshComponent* WeaponSkel = C->GetWeaponMesh())
+            return WeaponSkel;
+        if (C->GetMesh())
+            return C->GetMesh();
+    }
+
+    return nullptr;
+}
+
+void AForgeMelee::BeginWindow()
+{
+    if (!HasAuthority()) return;
+    bWindowActive = true;
+    HitThisWindow.Reset();
+    TrailSamples.Reset();
+
+    // Cache initial socket positions so the first sweep has a previous frame to reference
+    if (USceneComponent* Comp = ResolveWeaponComp())
+    {
+        const FVector Base = Comp->GetSocketLocation(BaseSocketName);
+        const FVector Tip  = Comp->GetSocketLocation(TipSocketName);
+        const FVector Mid  = (Base + Tip) * 0.5f;
+        PrevBase = Base; PrevTip = Tip; PrevMid = Mid;
+    }
+}
+
+void AForgeMelee::EndWindow()
+{
+    if (!HasAuthority()) return;
+    bWindowActive = false;
+    // Stop drawing the trail after the window closes
+    TrailSamples.Reset();
+}
+
+void AForgeMelee::Tick(float DT)
+{
+    Super::Tick(DT);
+    if (!HasAuthority() || !bWindowActive) return;
+
+    USceneComponent* Comp = ResolveWeaponComp();
+    if (!Comp) return;
+
+    // Sample current socket positions
+    const FVector CurBase = Comp->GetSocketLocation(BaseSocketName);
+    const FVector CurTip  = Comp->GetSocketLocation(TipSocketName);
+    const FVector CurMid  = (CurBase + CurTip) * 0.5f;
+
+    // Sweep along the path each point traveled since last frame
+    TraceRibbon(PrevBase, CurBase);
+    TraceRibbon(PrevTip , CurTip );
+    if (bUseMidRibbon) TraceRibbon(PrevMid , CurMid );
+
+    // Advance for next frame
+    PrevBase = CurBase; PrevTip = CurTip; PrevMid = CurMid;
+
+    // Optional on-screen trail for tuning and demo
+    if (bDrawTrail && GetNetMode() != NM_DedicatedServer)
+    {
+        const float Now = GetWorld()->TimeSeconds;
+        TrailSamples.Add({ CurBase, CurTip, Now });
+
+        // Keep a bounded buffer
+        if (TrailSamples.Num() > MaxTrailSamples)
+        {
+            const int32 Extra = TrailSamples.Num() - MaxTrailSamples;
+            TrailSamples.RemoveAt(0, Extra, false);
+        }
+
+        // Drop old samples
+        for (int32 i = TrailSamples.Num() - 1; i >= 0; --i)
+        {
+            if (Now - TrailSamples[i].Time > TrailLifetime)
+                TrailSamples.RemoveAtSwap(i, 1, false);
+        }
+
+        DrawTrail();
+    }
+}
+
+void AForgeMelee::DrawTrail()
+{
+    if (TrailSamples.Num() < 2) return;
+
+    const FColor BaseCol(255,165,0);
+    const FColor TipCol  = FColor::Yellow;
+    const FColor RungCol = FColor::Yellow;
+
+    // Threads (base/tip across time)
+    for (int32 i = 0; i < TrailSamples.Num()-1; ++i)
+    {
+        const auto& A = TrailSamples[i];
+        const auto& B = TrailSamples[i+1];
+
+        DrawDebugLine(GetWorld(),
+          A.Base+Lift, B.Base+Lift,
+          BaseCol, false, 0.f, 0, 3.0f);
+
+        DrawDebugLine(GetWorld(),
+          A.Tip +Lift, B.Tip +Lift,
+          TipCol,  false, 0.f, 0, 3.0f);
+    }
+
+    // Rungs (connect base to tip at each sample)
+    for (const auto& S : TrailSamples)
+    {
+        DrawDebugLine(GetWorld(),
+          S.Base+Lift, S.Tip+Lift,
+          RungCol, false, 0.f, 0, 1.5f);
+    }
+}
+
+void AForgeMelee::TraceRibbon(const FVector& A, const FVector& B)
+{
+    FCollisionQueryParams P(SCENE_QUERY_STAT(Melee), false);
+    if (SourceActor.IsValid())
+        P.AddIgnoredActor(SourceActor.Get());
+
+    TArray<FHitResult> Hits;
+    // Trace thickness (tune per weapon)
+    const float Radius = 6.f;
+
+    const bool bHit = GetWorld()->SweepMultiByChannel(
+        Hits, A, B, FQuat::Identity, TraceChannel,
+        FCollisionShape::MakeSphere(Radius), P
+    );
+
+    // Apply damage once per target within this window
+    if (bHit)
+    {
+        for (const FHitResult& Hit : Hits)
+        {
+            if (AActor* HitActor = Hit.GetActor())
+            {
+                if (!HitThisWindow.Contains(HitActor))
+                {
+                    HitThisWindow.Add(HitActor);
+                    SendHit(Hit);
+                }
+            }
+        }
+    }
+}
+
+void AForgeMelee::SendHit(const FHitResult& Hit)
+{
+    // Route all damage through GAS; respect team/friend checks
+    if (!DamageEffectParams.SourceAbilitySystemComponent) return;
+    if (!UForgeAbilitySystemLibrary::IsNotFriend(
+            DamageEffectParams.SourceAbilitySystemComponent->GetAvatarActor(), Hit.GetActor())) return;
+
+    if (UAbilitySystemComponent* TargetASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(Hit.GetActor()))
+    {
+        FDamageEffectParams Params = DamageEffectParams;   // Copy so we can tweak per-hit
+        const FVector BladeDir = (PrevTip - PrevBase).GetSafeNormal(); // Direction of last sweep
+        Params.DeathImpulse = BladeDir * Params.DeathImpulseMagnitude; // Knockback/impulse
+        Params.TargetAbilitySystemComponent = TargetASC;
+        UForgeAbilitySystemLibrary::ApplyDamageEffect(Params);
+    }
+}
+
+```
+
+---
+
+### UForgeMeleeAttack – thin ability wrapper
+
+**`ActivateAbility()`**
+
+- Spawns `AForgeMelee` on the server.
+- Sets damage params, socket names, and source actor.
+- Subscribes to montage gameplay events.
+
+**`EndAbility()`**
+
+- Destroys spawned melee actor and cleans up tasks.
+
+## `UForgeMeleeAttack.h`
+
+```cpp
+#pragma once
+
+#include "CoreMinimal.h"
+#include "AbilitySystem/Abilities/ForgeDamageGameplayAbility.h"
+#include "ForgeMeleeAttack.generated.h"
+
+class UAbilityTask_WaitGameplayEvent;
+class AForgeMelee;
+
+UCLASS()
+class FORGE_API UForgeMeleeAttack : public UForgeDamageGameplayAbility
+{
+	GENERATED_BODY()
+
+public:
+	virtual FString GetDescription(int32 Level) override;
+	virtual FString GetNextLevelDescription(int32 Level) override;
+
+	UPROPERTY(BlueprintReadOnly)
+	AForgeMelee* ActiveMelee = nullptr;
+
+protected:
+	virtual void ActivateAbility(const FGameplayAbilitySpecHandle Handle,
+								 const FGameplayAbilityActorInfo* Info,
+								 const FGameplayAbilityActivationInfo ActivationInfo,
+								 const FGameplayEventData* TriggerEventData) override;
+
+	virtual void EndAbility(const FGameplayAbilitySpecHandle Handle,
+							const FGameplayAbilityActorInfo* Info,
+							const FGameplayAbilityActivationInfo ActivationInfo,
+							bool bReplicate, bool bWasCancelled) override;
+
+private:
+	UPROPERTY()
+	UAbilityTask_WaitGameplayEvent* WaitBeginTask = nullptr;
+
+	UPROPERTY()
+	UAbilityTask_WaitGameplayEvent* WaitEndTask   = nullptr;
+
+	UFUNCTION()
+	void OnWindowBegin(FGameplayEventData Payload);
+
+	UFUNCTION()
+	void OnWindowEnd(FGameplayEventData Payload);
+};
+
+```
+
+## `UForgeMeleeAttack.cpp`
+
+```cpp
+#include "AbilitySystem/Abilities/ForgeMeleeAttack.h"
+#include "AbilitySystem/AbilityTasks/AbilityTask_WaitGameplayEvent.h"
+#include "Actor/ForgeMelee.h"
+#include "Character/ForgeCharacterBase.h"
+#include "GameFramework/Pawn.h"
+
+ // Called when the ability is activated
+ // Spawns the melee trace actor, sets up socket names, and binds to montage event tags
+void UForgeMeleeAttack::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
+                                        const FGameplayAbilityActorInfo* Info,
+                                        const FGameplayAbilityActivationInfo ActivationInfo,
+                                        const FGameplayEventData* TriggerEventData)
+{
+    Super::ActivateAbility(Handle, Info, ActivationInfo, TriggerEventData);
+
+    if (GetAvatarActorFromActorInfo()->HasAuthority())
+    {
+        APawn* Pawn = Cast<APawn>(GetAvatarActorFromActorInfo());
+        AForgeCharacterBase* Char = Cast<AForgeCharacterBase>(Pawn);
+        if (!Pawn || !Char) return;
+
+        // Spawn the ForgeMelee trace actor (deferred to allow parameter setup)
+        FTransform Xform(Pawn->GetActorRotation(), Pawn->GetActorLocation());
+        AForgeMelee* Melee = GetWorld()->SpawnActorDeferred<AForgeMelee>(
+            AForgeMelee::StaticClass(), Xform, Pawn, Pawn,
+            ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+
+        Melee->SourceActor        = Pawn;
+        Melee->DamageEffectParams = MakeDamageEffectParamsFromClassDefaults();
+        Melee->BaseSocketName     = Char->GetWeaponBaseSocketName();
+        Melee->TipSocketName      = Char->GetWeaponTipSocketName();
+        Melee->FinishSpawning(Xform);
+        ActiveMelee = Melee;
+
+        // Listen for montage events to start and end the trace window
+        const FForgeGameplayTags& Tags = FForgeGameplayTags::Get();
+
+        WaitBeginTask = UAbilityTask_WaitGameplayEvent::WaitGameplayEvent(this, Tags.Event_Melee_Window_Begin, nullptr, true, true);
+        WaitBeginTask->EventReceived.AddDynamic(this, &UForgeMeleeAttack::OnWindowBegin);
+        WaitBeginTask->ReadyForActivation();
+
+        WaitEndTask = UAbilityTask_WaitGameplayEvent::WaitGameplayEvent(this, Tags.Event_Melee_Window_End, nullptr, true, true);
+        WaitEndTask->EventReceived.AddDynamic(this, &UForgeMeleeAttack::OnWindowEnd);
+        WaitEndTask->ReadyForActivation();
+    }
+}
+
+// Event callback for melee window start
+void UForgeMeleeAttack::OnWindowBegin(FGameplayEventData)
+{
+    if (IsValid(ActiveMelee)) ActiveMelee->BeginWindow();
+}
+
+// Event callback for melee window end
+void UForgeMeleeAttack::OnWindowEnd(FGameplayEventData)
+{
+    if (IsValid(ActiveMelee)) ActiveMelee->EndWindow();
+}
+
+// Called when the ability ends or is cancelled
+// Cleans up the active melee trace actor and clears event tasks
+void UForgeMeleeAttack::EndAbility(const FGameplayAbilitySpecHandle Handle,
+                                   const FGameplayAbilityActorInfo* Info,
+                                   const FGameplayAbilityActivationInfo ActivationInfo,
+                                   bool bReplicate, bool bWasCancelled)
+{
+    if (IsValid(ActiveMelee)) ActiveMelee->Destroy();
+    ActiveMelee = nullptr;
+
+    WaitBeginTask = nullptr;
+    WaitEndTask   = nullptr;
+
+    Super::EndAbility(Handle, Info, ActivationInfo, bReplicate, bWasCancelled);
+}
+```
+
+## How it looks
+
+<video
+  src="/static/images/devlog/melee-attack-test.mp4"
+  autoPlay
+  loop
+  muted
+  playsInline
+  style={{ maxWidth: '100%' }}
+></video>
+
+Fully replicated through GAS, this system builds on the solid foundations from the tutorial - but it was satisfying to branch off and build this myself.
+
+<video
+  src="/static/images/devlog/replicated-melee-test.mp4"
+  autoPlay
+  loop
+  muted
+  playsInline
+  style={{ maxWidth: '100%' }}
+></video>
+
+---
+
+## Extending the design
+
+Because `AForgeMelee` is generic, future attacks can reuse it, for example:
+
+- **Greatsword Cleave**: bigger radius, longer window.
+- **Dagger Flurry**: short, repeated windows.
+- **Spear Thrust**: tip-only trace.
+- **Charged Slash**: scale params by charge time.
+- **Elemental Slash**: swap out damage Gameplay Effect.
+- **Parry/Counter**: detect incoming actors instead of dealing damage.
+
+For fully data-driven melee, I plan to use a Data Asset for:
+
+- Sweep radius
+- Mid-ribbon toggle
+- Trail settings
+- Default damage effect(s) and debuffs
+
+---
+
+## Wrapping up and what’s next
+
+**A note on Tick usage for future me**:
+Tick can be a performance hazard if overused, especially across many actors ([Actor Ticking](https://dev.epicgames.com/documentation/en-us/unreal-engine/actor-ticking-in-unreal-engine), [AActor::Tick](https://dev.epicgames.com/documentation/en-us/unreal-engine/API/Runtime/Engine/GameFramework/AActor/Tick)).
+`ForgeMelee` avoids that by ticking **only** during short, server‑authoritative attack windows, and only while the weapon is actively tracing.
+I also avoid replicating per‑frame state, which keeps network traffic clean.
+If I scale to lots of melee NPCs, I may disable Tick entirely outside the window or move the loop into an `UAnimNotifyState`/ticking `UAbilityTask`.
+
+**Next up**
+I’ll be focusing on improving animation blending so I can run, pivot, and attack seamlessly.
+I also want to experiment with upper-body-only montage slots for “attack while moving” and refine my targeting for melee lock-ons.
+Thanks for reading 🖖

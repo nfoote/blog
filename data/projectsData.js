@@ -1,5 +1,13 @@
 const projectsData = [
   {
+    title: 'Forge',
+    description: `Step into the world of Forge – my Unreal Engine 5 passion project where I’m
+    building an action RPG from the ground up. From multiplayer combat using the Gameplay Ability System
+    to procedural environments and dynamic effects, this is where game design meets cutting-edge tech.`,
+    imgSrc: '/static/images/forge.png',
+    href: '/tags/forge',
+  },
+  {
     title: 'Realtime with Socket.IO',
     description: `Have you ever wondered how to harness the power of WebSockets to create a
     multi-user experience in the browser? Come and checkout my project to see how I achieved
