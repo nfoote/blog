@@ -1,0 +1,224 @@
+---
+title: Mo’ Melee, Mo’ Problems
+date: '2025-10-26'
+tags: ['Unreal Engine', 'GAS', Forge, 'C++', 'URO']
+draft: false
+summary:
+layout: PostLayout
+images: []
+---
+
+In my last post, I covered how I added melee combat to my Forge project. Since then, I’ve been polishing the animation system - specifically making melee swings use **upper-body-only** animation.
+The goal: let the player move freely while attacking, similar to melee combat from *Marvel Rivals* or *Dark and Darker*.
+
+A lot of what helped me get there came from this excellent video guide:  
+🔗 [Upper Body Layered Blend (YouTube)](https://www.youtube.com/watch?v=8JS9jC2q78Q)
+
+---
+
+## Setting up the Animation Blueprint
+
+The main idea was to **cache the normal locomotion pose** (my Main States), then **add a new Slot node** for the *UpperBody*, with its source set to the cached locomotion.
+
+From there, I piped that into a **Layered Blend per Bone** node with these settings:
+
+```
+Start Bone: spine_01
+Blend Depth: 5   ← Best result: covers torso → arms without affecting legs.
+Mesh Space Rotation Blend: ✅ ON
+Mesh Space Scale Blend: 🚫 OFF
+Blend Root Motion Based on Root Bone: 🚫 OFF
+```
+
+The animation blueprint now looks something like this:
+
+![ABP](/static/images/devlog/abp_forge.png)
+
+I also updated my montage to reference the correct slot track:
+
+![Montage](/static/images/devlog/montage-upper.png)
+
+Overall, I’m really happy with how the upper/lower body isolation feels. The player can run and attack naturally without locking up the movement system.  
+
+That said, the lower body still looks a bit *puppet-like* when completely static. I might revisit it later with a better idle pose or subtle foot movement to add some life.
+
+<video
+  src="/static/images/devlog/moving-melee.mp4"
+  autoPlay
+  loop
+  muted
+  playsInline
+  style={{ maxWidth: '100%' }}
+></video>
+
+---
+
+# Client-Side Melee Issues
+
+While testing different network modes, I stumbled onto a weird bug in my original melee logic
+when running as a **client**. Typically I run dedicated server + client, but in this case the bug
+only appeared when running as client specifically.
+
+**Why client-only exposed it:**  
+- In **listen server** or **dedicated server + client**, the server has an up-to-date pose because it is either rendering the character (listen server) or is explicitly configured to tick montage data in headless mode.  
+- In **client-only PIE**, the server treats many meshes as not visible. With **URO** active, bone transforms are throttled and can stop refreshing while idle. That small but real delay between the client’s local montage and the server’s stale bone transforms is enough to make a moving-sweep become a zero-length sweep on the server.
+
+Turns out my character’s skeletal mesh had the setting
+**Only Tick Montages When Not Rendered** enabled.
+
+That’s part of Unreal’s **Update Rate Optimization (URO)** system, which reduces animation and bone updates when a character isn’t visible - a big performance win, but it breaks my original melee traces here **because the weapon and hand bones were not updating every frame on the server**.
+
+When URO kicked in, the **weapon and hand bones stopped updating** between frames. 
+This meant my swing traces had zero-length segments, so the hits never connected on the client.
+
+At first, I thought it was a replication issue between client and server.
+But after adding some client-side tracing, I realized it was URO throttling animation updates. The key giveaway
+was that the swing `BeginWindow` looked correct while moving, but stopped after the first frame while idle.
+
+<video
+  src="/static/images/devlog/URO.mp4"
+  autoPlay
+  loop
+  muted
+  playsInline
+  style={{ maxWidth: '100%' }}
+></video>
+
+---
+
+## Unreal’s Own Notes on This
+
+Epic’s docs even describe how Fortnite handles this:
+
+> “In Fortnite, we tend to use Only Tick Montages When Not Rendered as this ensures that gameplay-dependent notify data from Montages is always generated. This is particularly useful in server builds where all meshes are always flagged as not visible.”  
+> - [Unreal Engine Performance Tips & Tricks (Epic Games)](https://dev.epicgames.com/community/learning/knowledge-base/xBZp/unreal-engine-performance-tips-tricks-animation)
+
+---
+
+## The Fix
+
+The fix was to **temporarily disable URO** and switch the meshes to  
+`OnlyTickMontagesWhenNotRendered` **during the hit window**,  
+plus a **one-frame deferred pose refresh** right after the window opens.  
+
+Why this works: it guarantees the server has fresh bone transforms at least once at the start of the hit window, so all subsequent ribbon traces use current locations. Result: consistent hit detection across **client, listen server, and dedicated server**.
+
+Here’s the simplified version of the code I’m using:
+
+```cpp
+// AForgeMelee.h (private fields for caching + restoring)
+UPROPERTY() TWeakObjectPtr<USkeletalMeshComponent> CachedCharMesh;
+UPROPERTY() TWeakObjectPtr<USkeletalMeshComponent> CachedWeaponMesh;
+
+bool PrevCharURO = true;
+EVisibilityBasedAnimTickOption PrevCharTickOpt = EVisibilityBasedAnimTickOption::OnlyTickPoseWhenNotRendered;
+
+bool PrevWeapURO = true;
+EVisibilityBasedAnimTickOption PrevWeapTickOpt = EVisibilityBasedAnimTickOption::OnlyTickPoseWhenNotRendered;
+
+bool bForcedFirstRefresh = false;
+```
+
+```cpp
+// BeginWindow (server-only): disable URO + tick options
+void AForgeMelee::BeginWindow()
+{
+    if (ACharacter* Ch = Cast<ACharacter>(SourceActor.Get()))
+        CachedCharMesh = Ch->GetMesh();
+
+    if (!Weapon || !CachedCharMesh.IsValid())
+    {
+        UE_LOG(LogTemp, Error, TEXT("Melee: Missing weapon or character mesh."));
+        return;
+    }
+
+    // Character mesh overrides
+    PrevCharURO     = CachedCharMesh->bEnableUpdateRateOptimizations;
+    PrevCharTickOpt = CachedCharMesh->VisibilityBasedAnimTickOption;
+    CachedCharMesh->bEnableUpdateRateOptimizations = false;
+    CachedCharMesh->VisibilityBasedAnimTickOption  = EVisibilityBasedAnimTickOption::OnlyTickMontagesWhenNotRendered;
+
+    // Weapon mesh overrides
+    PrevWeapURO     = Weapon->bEnableUpdateRateOptimizations;
+    PrevWeapTickOpt = Weapon->VisibilityBasedAnimTickOption;
+    Weapon->bEnableUpdateRateOptimizations = false;
+    Weapon->VisibilityBasedAnimTickOption  = EVisibilityBasedAnimTickOption::OnlyTickMontagesWhenNotRendered;
+
+    // Ensure the first server tick refreshes bones before we trace
+    bForcedFirstRefresh = true;
+}
+```
+
+```cpp
+// Tick: do a one-frame deferred pose refresh, then trace
+void AForgeMelee::Tick(float DT)
+{
+    Super::Tick(DT);
+    if (!HasAuthority() || !bWindowActive) return;
+
+    USkeletalMeshComponent* Weapon =
+        CachedWeaponMesh.IsValid() ? CachedWeaponMesh.Get() : ResolveWeaponMesh(SourceActor.Get());
+    if (!Weapon) return;
+
+    if (bForcedFirstRefresh)
+    {
+        if (USkeletalMeshComponent* M = CachedCharMesh.Get())
+        {
+            M->TickAnimation(DT, false);
+            M->RefreshBoneTransforms();
+        }
+        Weapon->TickAnimation(DT, false);
+        Weapon->RefreshBoneTransforms();
+        bForcedFirstRefresh = false;
+    }
+
+    const FVector CurBase = Weapon->GetSocketLocation(BaseSocketName);
+    const FVector CurTip  = Weapon->GetSocketLocation(TipSocketName);
+    const FVector CurMid  = (CurBase + CurTip) * 0.5f;
+
+    TraceRibbon(PrevBase, CurBase);
+    TraceRibbon(PrevTip,  CurTip);
+    if (bUseMidRibbon) TraceRibbon(PrevMid, CurMid);
+
+    PrevBase = CurBase; PrevTip = CurTip; PrevMid = CurMid;
+}
+```
+
+```cpp
+// EndWindow: restore previous mesh settings
+void AForgeMelee::EndWindow()
+{
+    if (!HasAuthority()) return;
+    bWindowActive = false;
+    bForcedFirstRefresh = false;
+    TrailSamples.Reset();
+
+    if (USkeletalMeshComponent* M = CachedCharMesh.Get())
+    {
+        M->bEnableUpdateRateOptimizations = PrevCharURO;
+        M->VisibilityBasedAnimTickOption  = PrevCharTickOpt;
+    }
+    if (USkeletalMeshComponent* W = CachedWeaponMesh.Get())
+    {
+        W->bEnableUpdateRateOptimizations = PrevWeapURO;
+        W->VisibilityBasedAnimTickOption  = PrevWeapTickOpt;
+    }
+
+    CachedCharMesh = nullptr;
+    CachedWeaponMesh = nullptr;
+}
+```
+
+## Final Thoughts
+
+Digging into URO turned out to be a fun little detour - knowing about it will definitely come in handy again later.
+Working on the melee system also made me realise how tricky it is to balance animation feel against gameplay clarity.
+There’s always a tradeoff between making something look cool and making it feel right!
+
+---
+
+## Next Up
+
+- Add a lightweight lower-body additive animation for more natural motion.  
+- Improve melee hit VFX and impact feel.  
+- Experiment with Voxel plugin
