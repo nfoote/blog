@@ -1,8 +1,8 @@
 ---
 name: Nick Foote
 avatar: /static/images/avatar.png
-occupation: Software Engineer
-company: Earlypay
+occupation: Senior Software Engineer
+company: OFX
 email: n.foote09@gmail.com
 linkedin: https://www.linkedin.com/in/nick-foote-17008288/
 github: https://github.com/nfoote

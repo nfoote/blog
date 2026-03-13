@@ -1,0 +1,436 @@
+---
+title: Dev update - ARPG Foundations
+date: '2026-03-13'
+tags: ['Unreal Engine', 'GAS', Forge, 'C++', 'Blend space']
+draft: false
+summary:
+layout: PostLayout
+images: []
+---
+
+<video
+  src="/static/images/devlog/enemy-combat.mp4"
+  autoPlay
+  loop
+  muted
+  playsInline
+  style={{ maxWidth: '100%' }}
+></video>
+
+It has been a while since my last update in October 2025, so this post is a full progress recap of what I've been working on since then.
+
+Rather than writing small posts about individual features, I'm shifting these updates to be more milestone / changelist style. Forge development tends to move in waves where several systems evolve together, so this format better reflects how the project is actually progressing.
+
+This cycle ended up being very foundation-heavy. A lot of work went into persistence correctness, multiplayer architecture, combat reliability, and system scaffolding rather than flashy new gameplay features.
+
+## TL;DR
+
+- Since October 2025, 140+ submitted changelists landed across core gameplay, UI, save/load, combat, and multiplayer infrastructure.
+- A major product-direction pivot happened: Forge shifted from third-person toward top-down to better support a system-driven ARPG loop.
+- 2D blendspace + WASD movement became a major multi-week foundation effort, not a minor polish item.
+- Persistence and waypoint travel moved much closer to dedicated-server-safe behavior.
+- Dedicated server architecture made real progress, including packaged client/server validation and first remote EC2 connectivity pass.
+- Melee networking and gameplay-cue behavior were stabilized with better authority and lifecycle handling.
+- Enemy encounter architecture is now data-driven (tier + affix + identity), with Diablo II-style farm loop direction locked in.
+- Inventory plugin integration started and is now bridged into Forge controller/UI flow with multiple tutorial episodes completed.
+- Added Unreal Python export tooling that dumps Gameplay Ability and Gameplay Effect data to JSON for AI-assisted inspection/debugging.
+- Teamed up with a collaborator for Forge soundtrack work (Bandcamp: https://basevarlet.bandcamp.com/).
+- Testing and handoff docs are much stronger, with targeted regression playbooks for critical systems. I also moved toward an agent-style workflow inside the codebase and documentation, which has been working extremely well for revisiting complex areas later and locking in design patterns that I want to keep consistent across systems.
+
+---
+
+## Milestones Timeline
+
+### October-November 2025
+
+This period focused heavily on combat presentation and core gameplay feedback.
+
+- Core combat/UI foundations expanded:
+- vitals widget and health presentation work
+- melee montage / upper-body slot refinement
+- passive ability info/tags and passive Niagara component pass
+- Spell-tree and reward iteration continued (including multi-level-up reward tuning).
+
+At this stage a lot of the work was still about getting the combat feedback loop to feel readable and responsive. It was also a chance to revisit areas of the codebase I hadn't touched in a while.
+
+
+### December 2025
+
+December turned into a large persistence and menu systems wave.
+
+- Large save/load and menu wave landed:
+- main menu and play/quit flow
+- load slot state/view-model work (vacant/taken/enter-name/select/delete/confirm)
+- save game object and player data persistence scaffolding
+- map-name persistence and travel-to-saved-map flow
+- checkpoint and default-player-start setup
+- Added world-state save/load structures and save-progress interfaces.
+
+This was the first step toward making Forge behave like a real game session rather than a temporary runtime prototype. I didn't end up using a lot of the load slot based approach but it was a good introduction into single player data persistence.
+
+
+### January 2026
+
+Gameplay and UX iteration accelerated significantly during January.
+
+- loot tiers, loot effects, loot curve, pickup-sound pass
+- spawn volumes, player death flow, beacon/dungeon entrance work
+- spell bar / action bar / spellbook / tooltip iterations and overlay refactoring
+
+One area that unexpectedly consumed a lot of time was locomotion.
+
+- major locomotion pass:
+- WASD movement
+- 2D blendspace locomotion
+- 45-degree directional animation coverage
+
+What initially looked like a small polish task ended up becoming a foundational piece of the entire top-down feel of the game.
+
+---
+
+## Major Direction Shift: Third-Person -> Top-Down
+
+One of the biggest decisions in this cycle was changing direction from a third-person presentation toward top-down gameplay.
+
+Why this shift happened:
+
+- It better matches the kind of ARPG I personally enjoy playing and building.
+- It supports a more system-driven gameplay loop (combat, progression, loot, encounters).
+- It fits much better within solo-dev scope and iteration speed.
+
+This was not just a camera swap. Movement, targeting, animation assumptions, and parts of the UI had to be revisited to support the new viewpoint.
+
+
+## Movement Foundation: 2D Blendspace + WASD
+
+<video
+  src="/static/images/devlog/blendspace2d.mp4"
+  autoPlay
+  loop
+  muted
+  playsInline
+  style={{ maxWidth: '100%' }}
+></video>
+
+A surprising amount of development time went into making top-down movement feel correct.
+
+Key work included:
+
+- implementing and iterating on WASD movement
+- building and tuning 2D blendspace locomotion
+- adding directional coverage (including 45-degree support)
+- refining strafe/backpedal readability and responsiveness
+
+Movement ended up becoming a foundational dependency for combat feel, targeting confidence, and overall readability of encounters.
+
+---
+
+### February 2026
+
+February focused heavily on persistence and encounter structure.
+
+- Implemented melee movement slow tuning.
+
+- Landed major waypoint persistence Phase 3 work in C++:
+- waypoint actor unlock/state restore path
+- per-slot `UnlockedWaypoints` save data
+- GameMode waypoint APIs and server travel RPC path
+- routing table support for waypoint destinations
+
+- Locked enemy content direction to Diablo II-style farmability:
+- enemies (including super-uniques) respawn on session/load reset
+- persistence tracks progression/routing rather than per-enemy dead/alive state
+
+- Standardized waypoint highlight stencil to align with checkpoints.
+
+- Resolved multiplayer melee trace/window instability in listen-server scenarios.
+
+- Added scalable enemy encounter scaffolding:
+- encounter tiers
+- affix profiles
+- pack profiles (scaffolded)
+- identity profiles
+
+This was a big step toward making encounters scalable without exploding the number of enemy classes.
+
+
+### March 2026
+
+March focused on multiplayer stability and system reliability.
+
+- Hardened respawn attribute rebuild:
+- replaced secondary-only refresh path with idempotent persistent profile effect rebuild
+- added dedicated regression checklist for death -> respawn -> level-up crash prevention
+
+- Started Inventory initiative (`INIT-013`) and integrated plugin seams with Forge controller/input architecture.
+
+- Completed dedicated-server checkpoints:
+- Step 1 local DS runtime identity validation (per-player `CharacterId` runtime state)
+- Step 2 packaged server/client validation (PIE + packaged passes)
+- Step 3 first remote EC2 connectivity validation pass
+
+- Improved target nameplate hover stability with controller-side debounce and better enemy hover collision coverage.
+
+- Progressed melee trail gameplay cue architecture and lifecycle reliability.
+
+---
+
+# System-by-System Progress
+
+## 1) Persistence and Waypoint Flow
+
+<video
+  src="/static/images/devlog/waypoints.mp4"
+  autoPlay
+  loop
+  muted
+  playsInline
+  style={{ maxWidth: '100%' }}
+></video>
+
+`INIT-001` remains in progress, but a large amount of foundational work is now complete.
+
+Key changes included:
+
+- Owner-only replicated waypoint unlock state on `PlayerState`.
+- Waypoint menu controller refactor to consume catalog + player state instead of directly reading from GameMode.
+- Reactive UI update flow through delegates with safer bind/unbind lifecycle behavior.
+- Locked/unlocked row rendering and travel gating behavior in waypoint menu UI.
+- Dedicated-server context hydration of unlocks with save-backed authority mutation.
+
+Net result:
+
+Waypoint flow is now much more aligned with multiplayer and dedicated-server realities, and UI/data ownership is significantly cleaner.
+
+
+## 2) Dedicated Server and Multiplayer Architecture
+
+![Montage](/static/images/devlog/dedicated.png)
+
+The dedicated server path moved from concept toward validated checkpoints.
+
+Major progress included:
+
+- Per-player runtime identity (`CharacterId`) introduced for DS sessions.
+- Runtime profile storage and context-aware save/load wiring.
+- DS waypoint behavior updated to avoid moving all players unintentionally.
+- Packaged `ForgeServer` and `ForgeClient` targets validated.
+- Remote EC2 connectivity pass completed with successful client connections.
+- Session lifecycle instrumentation added (`starting`, `ready`, `in_progress`, `stale_or_crashed`).
+
+Net result:
+
+Multiplayer infrastructure is now in a materially stronger position for the upcoming AWS / dedicated-server push.
+
+
+## 3) Combat Reliability and Feel
+
+<div style={{ display: 'flex', flexWrap: 'wrap' }}>
+  <video
+    src="/static/images/devlog/melee-trail.mp4"
+    autoPlay
+    loop
+    muted
+    playsInline
+    style={{ width: '100%', maxWidth: '480px' }}
+  />
+
+  <video
+    src="/static/images/devlog/melee-trail-fire.mp4"
+    autoPlay
+    loop
+    muted
+    playsInline
+    style={{ width: '100%', maxWidth: '480px' }}
+  />
+</div>
+
+Melee combat received both bug fixes and architectural cleanup.
+
+Work included:
+
+- tightening melee window ownership between ability logic and animation notifies
+- improving trace stability through tick-group and sweep-state adjustments
+- improving debug signal quality for multiplayer troubleshooting
+- advancing gameplay-cue-based melee trail lifecycle behavior
+- fixing attack-state tag drift that could cause slow effects to persist incorrectly
+
+Net result:
+
+Combat behavior is significantly more deterministic in networked play and easier to diagnose when issues appear.
+
+
+## 4) Enemy Content Architecture
+
+![Montage](/static/images/devlog/enemy-identities.png)
+
+
+Enemy authoring now follows a more scalable composition model.
+
+Enemies are defined through combinations of:
+
+- **Tier** - baseline difficulty and scaling
+- **Affix Profile** - gameplay modifiers
+- **Identity Profile** - presentation and unique characteristics
+
+This avoids class explosion while allowing a wide range of enemy variants.
+
+Other additions:
+
+- documented super-unique authoring pattern
+- clarified hit-react ownership between C++ threshold logic and Gameplay Ability activation
+- pack profile scaffold added for future leader/minion orchestration
+
+Net result:
+
+Encounter content creation is faster, more modular, and better aligned with the Diablo-style farm loop direction.
+
+
+## 5) Inventory Integration (INIT-013)
+
+![Montage](/static/images/devlog/inventory.png)
+
+
+Inventory plugin integration has started with Forge-specific adaptation rather than replacing the tutorial architecture entirely.
+
+Work completed so far:
+
+- plugin framework imported and reviewed
+- Forge input-tag bridge added
+- `InputTag.Interact` for pickup attempts
+- `InputTag.Inventory` for menu toggling
+- overlay/widget-controller delegates added for inventory events
+- Forge pickup base actor introduced to align plugin pickup flow with Forge highlight/interaction behavior
+
+Net result:
+
+Inventory is now actively wired into Forge's gameplay and UI architecture.
+
+
+## Agent-Driven Development Workflow
+
+During this cycle I also shifted toward an **agent-driven development workflow** for both the codebase and the supporting documentation.
+
+The idea is simple: complex systems are much easier to revisit months later if their architecture, assumptions, and boundaries are documented in a structured way that both humans and tools can reason about.
+
+Instead of relying purely on commit history or scattered notes, Forge now has a structured documentation tree that mirrors the major systems in the project.
+
+Example structure:
+
+```
+docs
+  ├── Enemies
+  │   ├── Authoring Encounters (Rare, Champion, Super Unique)
+  │   └── Enemy Encounter Architecture
+  ├── blog
+  │   └── Forge Dev Update (October 2025 -> March 2026)
+  ├── initiatives
+  │   ├── INIT-001 Persistence
+  │   ├── INIT-008 Dedicated Server + Lobby Architecture
+  │   └── INIT-013 Inventory System Integration
+  ├── inventory
+  │   ├── Episode 14 - Inventory Component
+  │   ├── Episode 19 - Grid Slots
+  │   ├── Episode 23 - No Room in Inventory
+  │   └── Spatial Inventory Persistence Mapping Plan (2026-03-10)
+  ├── multiplayer
+  │   ├── Step 1 Handover: Dedicated Server Runtime Identity + Waypoint Flow
+  │   └── Step 2 Checkpoint: Server/Client Build Validation Prep
+  └── testing
+      ├── Gameplay Ability Export (JSON via Unreal Python)
+      ├── Gameplay Effect Export (JSON via Unreal Python)
+      ├── Melee Network Troubleshooting (Listen Server + Clients)
+      └── Respawn Attribute Rebuild Regression
+```
+
+This structure allows me to:
+
+- revisit complicated systems quickly
+- lock in design patterns so new work doesn't drift from established architecture
+- provide clear handoff-style documentation for future systems
+
+Larger pieces of work that touch multiple systems are tracked in the **`initiatives`** folder. These documents act as higher-level planning artifacts that connect work across different parts of the codebase. Each initiative captures design decisions, touchpoints between systems, and staged implementation plans. This makes it much easier to resume work later or hand context to an agent without needing to rediscover why certain architectural choices were made.
+
+It also works well with AI-assisted workflows because the documentation is organized around **systems rather than individual commits**.
+
+### Python Export Tooling for GAS
+
+One particularly useful addition in this workflow was building Unreal Python export scripts that dump:
+
+- Gameplay Abilities (GA) -> JSON
+- Gameplay Effects (GE) -> JSON
+
+Ability and effect graphs can become very complex. When they contain many branches, conditions, and Gameplay Ability interactions, they can be difficult to reason about purely inside the Unreal editor.
+
+The export pipeline produces a machine-readable snapshot of ability and effect configuration that can be:
+
+- diffed
+- indexed
+- inspected
+- analyzed outside the editor
+
+This makes it much easier to reason about complex GAS behavior and opens the door for AI-assisted debugging workflows.
+
+I plan to write a **separate blog post** that dives deeper into this pipeline because it turned out to be a surprisingly powerful workflow.
+
+```
+{
+  "asset_path": "/Game/Blueprints/AbilitySystem/Enemy/Effects/GE_PrimaryAttributes_Ranger.GE_PrimaryAttributes_Ranger",
+  "exported_object_name": "Default__GE_PrimaryAttributes_Ranger_C",
+  "class": "GE_PrimaryAttributes_Ranger_C",
+  "property_count": 25,
+  "properties": {
+    "duration_policy": "<GameplayEffectDurationType.INSTANT: 0>",
+    "duration_magnitude": {
+      "magnitude_calculation_type": "<GameplayEffectMagnitudeCalculation.SCALABLE_FLOAT: 0>",
+      "scalable_float_magnitude": {
+        "value": 0.0,
+        "curve": "<Struct 'CurveTableRowHandle' (0x00000260BA6ED850) {curve_table: None, row_name: \"\"}>",
+        "registry_type": "<Struct 'DataRegistryType' (0x00000260BA6ED868) {name:
+```
+
+---
+
+# Quality and Documentation Improvements
+
+A lot of invisible but important work happened around quality and documentation.
+
+Additions included troubleshooting and regression documentation for:
+
+- melee multiplayer timing and tracing
+- respawn attribute rebuild crash prevention
+- target nameplate hover behavior
+- movement replication and click-targeting
+
+Packaging scripts and validation checklists were also expanded to make the server/client build workflow easier to reproduce.
+
+---
+
+# Audio Collaboration
+
+I have also teamed up with a friend to start exploring soundtrack work for Forge.
+
+Bandcamp:
+
+https://basevarlet.bandcamp.com/
+
+---
+
+# What's Next
+
+Current priorities include:
+
+- continuing the inventory implementation (including weapon-dependent animation states)
+- gameplay ability and animation polish
+- unique/rare enemy nameplate visual polish
+- continued dedicated-server testing and progression toward an AWS-first multiplayer workflow
+
+---
+
+# Closing
+
+This development cycle was heavily focused on foundations: persistence correctness, dedicated-server architecture, combat determinism, and scalable content systems.
+
+It was less about flashy one-off features and more about building the architectural footing needed for the next phase of Forge.
+
+The project is now starting to feel much closer to a real multiplayer ARPG platform rather than a collection of prototype systems.
