@@ -1,0 +1,345 @@
+---
+title: Dev update - Turning Helmets Into Spreadsheets
+date: '2026-07-04'
+tags: ['Unreal Engine', 'UMG', 'Data Assets']
+draft: false
+summary: Building Forge's itemization pipeline with rarity, affixes, equipment archetypes, real gameplay stats, and a redesigned attribute menu.
+layout: PostLayout
+images: []
+---
+
+Hello friends, bots, and other internet strangers. Welcome to another dev post on my ARPG passion project, Forge.
+
+Since my March update, most of my work has focused on building a stronger itemization pipeline.
+
+One of my favourite things about ARPGs is how much room they give players to express themselves. Not just through how powerful their character becomes, but through how that character is built, geared, and played.
+
+Chris Wilson has described this as a mix of two connected ideas: [character expression and player expression](https://www.youtube.com/shorts/CD0sWWHlRUo).
+
+One side is the buildcraft: stats, gear, skills, modifiers, and all the little choices that shape a character. The other side is how the player actually pilots that character through positioning, timing, reactions, and decision-making.
+
+That sweet spot is a huge part of why I love the genre.
+
+So this update is mostly about pushing Forge closer to that foundation. Items are no longer just inventory entries or tooltip data. They are starting to become real gameplay objects that can roll different stats, modify the character, and feed into combat.
+
+Items can now roll as <span style={{ color: "#d1d5db", fontWeight: 600 }}>Normal</span>, <span style={{ color: "#60a5fa", fontWeight: 600 }}>Magic</span>, or <span style={{ color: "#facc15", fontWeight: 600 }}>Rare</span>, affect real character attributes and abilities, and visibly update the redesigned attribute menu.
+
+Behind that is an authoring system designed to let me create equipment from reusable archetypes instead of rebuilding the same setup for every item.
+
+A lot of work has gone into these systems, but the goal is simple: make future content easier to author, while giving items a real path from rolled stats to character power to moment-to-moment gameplay.
+
+## Item Rarity
+
+<video
+  src="/static/images/devlog/helm-rarity.mp4"
+  autoPlay
+  loop
+  muted
+  playsInline
+  style={{ maxWidth: '100%' }}
+></video>
+
+Forge now supports the foundations of a Diablo-style rarity system.
+
+Items can be generated as:
+
+* <span style={{ color: "#d1d5db", fontWeight: 600 }}>Normal</span> items using their base properties
+* <span style={{ color: "#60a5fa", fontWeight: 600 }}>Magic</span> items with rolled affixes
+* <span style={{ color: "#facc15", fontWeight: 600 }}>Rare</span> items with multiple modifiers and generated names
+
+Prefixes and suffixes are authored independently and selected from data-driven pools. The resulting modifiers belong to the generated item instance, so its rarity, name, tooltip, and stats all describe the item that was actually rolled.
+
+This means a base helmet or sword is no longer limited to one fixed version. The same base item can produce different armor, damage, attribute, and resistance combinations depending on its rarity and affixes.
+
+From a player point of view, two Iron Helms are no longer guaranteed to be the same item. One might simply be a basic piece of armor, while another might roll extra Armor, bonus Strength, or resistance modifiers that make it better for a particular build.
+
+## A Data-Driven Equipment Archetype System
+
+![helm-data](/static/images/devlog/helm_da.png)
+
+A major part of this work was designing an authoring workflow that can scale beyond a handful of manually configured items.
+
+The system has three main layers:
+
+1. An equipment archetype defines what every item of that equipment type should contain.
+2. A base-item Data Asset defines one concrete item.
+3. A collection groups base items so runtime systems can find and generate them.
+
+The helm equipment type is the first concrete example.
+
+`DA_Archetype_Helms` defines the shared contract for helms. It establishes that helms are equippable armor items and provides the standard fragment structure every helm should use.
+
+Those shared fragments include things like:
+
+* Item name and icon presentation
+* Sell value
+* Required level
+* Required Strength
+* Head equipment behavior
+* Base Armor
+* Durability
+* Inventory grid dimensions
+
+Concrete items then inherit that structure and replace the placeholders with their own authored values.
+
+For example, `DA_BaseItem_IronHelm` provides its own item tag, icon, pickup actor, equipped skeletal mesh, base Armor, Durability, level requirement, Strength requirement, and sell value.
+
+`DA_BaseItem_RawhideCap` uses the same helm archetype but supplies different visuals, requirements, item identity, and presentation.
+
+Both items are registered in `DA_ItemCollection_Helms`.
+
+The structure looks like this:
+
+```text
+DA_Archetype_Helms
+  |-- DA_BaseItem_IronHelm
+  `-- DA_BaseItem_RawhideCap
+
+DA_ItemCollection_Helms
+  |-- Iron Helm
+  `-- Rawhide Cap
+```
+
+The important part is that this is composition rather than a deep Blueprint inheritance tree. The archetype defines the equipment-type contract, while each base item remains free to provide its own identity and values.
+
+When I add another helm, I do not need to reconstruct the complete inventory setup manually. I seed it from the helm archetype, provide the concrete item data, and add it to the collection.
+
+The same approach can be reused for swords, bows, chest armor, boots, gloves, and other equipment types. Each type can have its own archetype, giving me a faster authoring pipeline while keeping item definitions explicit and inspectable.
+
+## From Fragments to Final Damage
+
+The original inventory system already used fragments as small, composable pieces of item data. A fragment might describe an icon, sell value, inventory size, tooltip row, or other isolated part of an item.
+
+The next logical step was to expand that into concrete gameplay effects and mechanics:
+
+* A sword needs a damage range.
+* A helmet needs Armor.
+* A rare item needs rolled affixes.
+* A requirement needs to decide whether the player can equip the item.
+* A tooltip needs to explain the final result.
+* Combat needs to use the same numbers the player just read.
+
+Using fragments, I pushed the pattern further.
+
+Fragments now carry richer gameplay meaning for things like base Armor, weapon damage ranges, durability, requirements, resistances, equipment presentation, and rolled affixes. They are still small pieces of item data, but they now feed into a much larger path:
+
+```text
+Authored Item Fragments
+        |
+        v
+Generated Item Instance
+        |
+        v
+Resolved Item Stats
+        |
+        v
+Equipped Weapon / Equipment State
+        |
+        v
+Ability Damage Composition
+        |
+        v
+Gameplay Effect + ExecCalc
+        |
+        v
+Final Damage On Target
+```
+
+This is where all the data-asset setup starts to pay off.
+
+The item resolver combines an item’s base fragments with its rolled modifiers and produces the final local result for that item instance. A weapon can resolve its damage profile. Armor can resolve its final Armor value. Other equipment can contribute attributes, resistances, or secondary stats.
+
+Abilities then decide how they want to use that equipment context.
+
+* A basic bow attack might use the equipped weapon’s damage range directly.
+* A spell might ignore weapon damage entirely.
+* A hybrid ability might combine weapon damage, ability coefficients, and equipment bonuses.
+
+The important part is that each layer has a clear job.
+
+* Tooltips do not invent their own numbers.
+* Combat does not scrape values out of the UI.
+* Abilities do not need to know how an item was authored.
+* The inventory plugin does not become the combat system.
+
+Everything starts from the same resolved item data, but the responsibility stays separated between inventory, equipment, abilities, GAS, and final damage execution.
+
+Fragments now participate in rarity generation, resolved item stats, authoritative equipment export, GAS attributes, character-sheet presentation, and combat.
+
+The original compositional pattern is still there. It has just grown from “this item has an icon, size, and position” into “this item can become a rolled piece of equipment that changes the character and affects the final damage calculation.”
+
+## Items Now Affect Real Gameplay
+
+<video
+  src="/static/images/devlog/equipment-stat-change.mp4"
+  autoPlay
+  loop
+  muted
+  playsInline
+  style={{ maxWidth: '100%' }}
+></video>
+
+Equipped items now contribute to the Ability System Component rather than existing only inside the inventory UI.
+
+Basic melee and bow attacks can consume the equipped weapon's resolved damage range on the authoritative gameplay path. Other abilities can intentionally ignore weapon damage or compose it differently.
+
+The inventory system owns the item instance, rarity, affixes, and resolved item-local meaning. Forge exports that result through its authoritative equipment runtime. GAS remains responsible for character attributes, effects, and combat.
+
+This preserves several important boundaries:
+
+* Inventory widgets do not own gameplay state.
+* The inventory plugin does not become the authority over combat.
+* GAS does not inspect tooltip fragments to discover item meaning.
+* Equipment changes come from accepted authoritative state rather than UI assumptions.
+* Tooltip and gameplay values originate from the same resolved item data.
+
+That architecture matters more than any individual stat. It gives the system a stable path for multiplayer, respawning, persistence, and future backend integration.
+
+## Taking a Break From Spreadsheets
+
+<video
+  src="/static/images/devlog/attack-slow.mp4"
+  autoPlay
+  loop
+  muted
+  playsInline
+  style={{ maxWidth: '100%' }}
+></video>
+
+Over the past few months, I got a bit tired of working strictly on UI and systems, so I spent some time fixing how movement behaves while attacking.
+
+Previously, attacking could feel disconnected from the character's movement. The player could swing a melee weapon or fire a bow while still moving at full speed, which made attacks feel too weightless.
+
+Part of this came from an issue in my initial blendspace and animation blueprint setup, and part of it came from how I was applying movement changes through GAS. I was using a Gameplay Effect to adjust movement speed in a way that did not play nicely across replication, so I reworked the approach.
+
+Now, the character slows down while attacking, adding a small amount of commitment without forcing the player to stop completely.
+
+Melee and basic bow attacks share the same attack-movement-slow path, backed by the corrected Gameplay Effect and the character's attacking state. The slow is applied when the attack begins and cleaned up when the attack finishes, with protection against brief full-speed flickers between chained attacks.
+
+The animation now reflects that reduced speed as well.
+
+The locomotion blendspace samples the character's real ground speed against a stable authored animation reference speed. When an attack reduces movement through GAS, the blendspace naturally shifts toward its slower locomotion samples instead of continuing to play a full-speed run.
+
+That keeps physical movement and animation visually synchronized during both melee and ranged attacks.
+
+It also gives ranged attacks an actual movement cost. Firing a bow no longer feels like something the player can do for free while kiting at full speed. There is now a small trade-off: attack, but give up some movement while doing it.
+
+I like this kind of attack commitment a lot. It is the same general behaviour I enjoy in games like Path of Exile 2, where attacks have weight and positioning matters because the player gives up some mobility to deal damage.
+
+I'm keen to explore this further and use the same system to shape other attack behaviours, such as heavier melee swings, charged attacks, and spell casting. A quick basic attack might only slow the player slightly, while a large axe swing or powerful spell could create a much stronger movement commitment.
+
+## A Dedicated Item Spawn and Rarity Test System
+
+<video
+  src="/static/images/devlog/item-drop-tool.mp4"
+  autoPlay
+  loop
+  muted
+  playsInline
+  style={{ maxWidth: '100%' }}
+></video>
+
+Waiting for the correct random item to drop from an enemy would make itemization development painfully slow, so I created a dedicated item spawning and rolling system.
+
+It uses the same collections, builder, rarity, affix, and spawn pipeline intended for real loot. It is not a separate test-only representation of an item.
+
+For example, the helm collection can be used to spawn either the Iron Helm or Rawhide Cap as a Normal, Magic, or Rare item. Prefix and suffix pools can also be supplied to test particular combinations.
+
+I can roll a specific equipment archetype and rarity directly from the console. For example:
+
+```text
+RollItem bows 0 rare
+```
+
+This selects the bows archetype, rolls base item index `0`, and generates it at Rare quality through the normal item-building pipeline.
+
+I can swap the archetype, item index, or rarity to quickly generate the exact category of item I need to inspect. The result is still a real rolled item with its rarity, affixes, resolved stats, tooltip data, and gameplay contributions.
+
+This lets me rapidly verify:
+
+* Normal, Magic, and Rare generation
+* Prefix and suffix selection
+* Generated item names
+* Rolled stat ranges
+* Tooltip formatting and colors
+* Armor and damage resolution
+* Equipment requirements
+* Attribute changes
+* Ability damage changes
+
+The system supports randomized testing, but it can also produce controlled results when I need to reproduce a specific problem.
+
+That has shortened the development loop considerably. I can author an equipment archetype and its base items, generate variants, inspect their tooltips, equip them, and confirm their gameplay effects without building a temporary enemy drop table for every test.
+
+## A Complete Attribute Menu Overhaul
+
+![AttributeMenu](/static/images/devlog/attribute-menu.png)
+
+The attribute menu received both a structural rebuild and a significant visual pass.
+
+The new version includes:
+
+* A redesigned character header
+* New panel structure
+* Revised primary and secondary attribute sections
+* Dedicated resources and resistances
+* New icons and typography
+* Improved stat rows
+* Updated background materials
+* Better open and close behavior
+
+A substantial amount of time went into styling because this screen is where the itemization system becomes understandable to the player.
+
+My initial concept for the attribute menu was much more detailed. I started with the idea of capturing some of the simplicity and stone-carved feel of Diablo 2's attribute menu, then explored variations with image-generation tools like Midjourney, Nano Banana, and ChatGPT.
+
+Eventually, I landed on something that kept some of that older ARPG influence, but pushed it toward a slightly more modern aesthetic.
+
+<figure>
+  ![AttributeMenu](/static/images/devlog/concept-v2.png)
+  <figcaption style={{ textAlign: "center" }}>
+    <em>Concept art</em>
+  </figcaption>
+</figure>
+
+<figure>
+  ![AttributeMenu](/static/images/devlog/concept-implemented.png)
+  <figcaption style={{ textAlign: "center" }}>
+    <em>Implemented in game</em>
+  </figcaption>
+</figure>
+
+While it looks pretty cool, I decided to pare things back, even though I had already implemented a lot of the concept into Unreal by that point.
+
+I had divided the layout into reusable widgets, wired data through widget controllers, and added viewport responsiveness. But it still didn't feel right.
+
+I am happy with where it ended up and what I learned along the way. The final version is much more restrained than the initial concept, and I think it is stronger for it. I found that relying too heavily on PNG artwork made parts of the UI feel over-designed and a little amateurish.
+
+The better result came from mixing Unreal materials, simple rendering math, and PNG textures only where they actually made sense.
+
+The biggest takeaway was that subtlety matters. Less really is more, especially for UI that the player will spend a lot of time reading.
+
+Most importantly, the player-facing item loop is now visible:
+
+```text"
+Find item
+  -> Inspect its rolled stats
+  -> Equip it
+  -> See the character's attributes change
+  -> Use those values in combat
+```
+
+## What's Next
+
+Now that the inventory and attribute menu are in a good place, I have started focusing on the skill tree.
+
+I have a concept I am happy with and have begun building the first version of it. This will likely be the focus of my next post, and I am especially excited about this one because it should give me a much better platform for creating new abilities in a structured way.
+
+## Closing
+
+This update was mostly about turning itemization from a collection of one-off pieces into a pipeline that can actually scale.
+
+Items can now be authored through reusable equipment archetypes, generated at different rarities, rolled with affixes, spawned through a real test pipeline, equipped through authoritative inventory state, exported into GAS, and reflected in the redesigned attribute menu.
+
+The result is a stronger content-production pipeline. Adding the next helm, weapon type, archetype, or affix pool should increasingly mean authoring data — not rewriting the systems that support it.
+
+
